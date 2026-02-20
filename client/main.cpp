@@ -7,7 +7,16 @@
 #include "raylib.h"
 #include "../common/protocol.h"
 
-int main() {
+int main(int argc, char* argv[]) {
+    // determine server IP
+    const char* server_ip = "127.0.0.1"; // Default
+    if (argc > 1) {
+        server_ip = argv[1];
+        std::cout << "Connecting to custom IP: " << server_ip << std::endl;
+    } else {
+        std::cout << "No IP provided. Defaulting to localhost (127.0.0.1)" << std::endl;
+    }
+
     // 1. Setup Network Connection
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -20,7 +29,7 @@ int main() {
     serv_addr.sin_port = htons(SERVER_PORT);
     
     // Connect to localhost (127.0.0.1) for testing
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, server_ip , &serv_addr.sin_addr) <= 0) {
         std::cerr << "Invalid address\n";
         return 1;
     }
@@ -63,14 +72,18 @@ int main() {
     }
 
     // 2. Setup Raylib Window
-    const int screenWidth = 800;
-    const int screenHeight = 600;
+    const int screenWidth = 1500;
+    const int screenHeight = 900;
     InitWindow(screenWidth, screenHeight, "Smack.io - Client");
     SetTargetFPS(60);
 
     // Initialize an empty game state
     GameStatePacket gameState = {};
     // uint8_t my_id = 0; // We will just assume we are ID 0 for this demo's simplicity
+
+    Texture2D playerTex = LoadTexture("assets/player.png");
+    Texture2D paperTex = LoadTexture("assets/newspaper.png");
+    Texture2D opponentTex = LoadTexture("assets/other players.png");
 
     // 3. The Game Loop
     while (!WindowShouldClose()) {
@@ -83,6 +96,18 @@ int main() {
         if (IsKeyDown(KEY_S)) input.dy += 1.0f;
         if (IsKeyDown(KEY_A)) input.dx -= 1.0f;
         if (IsKeyDown(KEY_D)) input.dx += 1.0f;
+
+        // Check for Restart Request
+        if (IsKeyPressed(KEY_R)) {
+            // Check if anyone has won (score >= 10)
+            bool gameEnded = false;
+            for(int i=0; i<MAX_PLAYERS; i++) if(gameState.players[i].score >= 10) gameEnded = true;
+
+            if (gameEnded) {
+                uint8_t restartType = RESTART_REQ;
+                send(sock, &restartType, sizeof(uint8_t), 0);
+            }
+        }
 
         // if a player holds W and D at the same time, they move faster diagonally because 1+1 in vector length is sqrt.2 ​≈ 1.41. The Solution: Normalize the input vector so diagonal movement isn't a "cheat" speed.
         // Vector2 dir = { 0, 0 };
@@ -137,40 +162,79 @@ int main() {
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
+        // --- DRAW BACKGROUND GRID ---
+        int gridSize = 40;
+        for (int i = 0; i < screenWidth; i += gridSize) {
+            DrawLine(i, 0, i, screenHeight, LIGHTGRAY);
+        }
+        for (int i = 0; i < screenHeight; i += gridSize) {
+            DrawLine(0, i, screenWidth, i, LIGHTGRAY);
+        }
+
+        // Optional: Draw a border to show the Arena limits
+        DrawRectangleLinesEx((Rectangle){0, 0, 1500, 900}, 5, DARKGRAY);
+
         // Draw all active players
         for (int i = 0; i < MAX_PLAYERS; i++) {
             if (gameState.players[i].active) {
                 float px = gameState.players[i].x;
                 float py = gameState.players[i].y;
                 float rotDegrees = gameState.players[i].rotation * (180.0f / PI);
+
+                // Add an offset if they are attacking
+                if (gameState.players[i].is_attacking) {
+                    // This makes the paper "swing" forward by 45 degrees when the button is held
+                    rotDegrees += 45.0f; 
+                }
                 
-                // Color the players differently so you can tell them apart
-                Color playerColor = (i == my_id) ? BLUE : RED;
+                // --- DRAW PLAYER BODY ---
+                // Source is the whole image. Dest is where and how big to draw it.
+                Texture2D tex = (i == my_id) ? playerTex : opponentTex;
+                Rectangle playerSource = { 0.0f, 0.0f, (float)tex.width, (float)tex.height };
+                Rectangle playerDest = { px, py, 100.0f, 100.0f }; // Hardcoded 40x40 size
+                Vector2 playerOrigin = { 50.0f, 50.0f }; // Center of the 40x40 dest rect
                 
                 // Draw the Player (Circle)
-                DrawCircle(px, py, 20.0f, playerColor);
+                DrawTexturePro(tex, playerSource, playerDest, playerOrigin, 0.0f, WHITE);
 
                 // Calculate Newspaper Size based on Score
-                float paperWidth = 40.0f + (gameState.players[i].score * 10.0f);
-                float paperHeight = 15.0f;
+                float paperWidth = 50.0f + (gameState.players[i].score * 6.0f);
+                float paperHeight = 100.0f;
 
                 // Draw the Newspaper (Rectangle attached to the player)
-                // DrawRectanglePro allows us to rotate the rectangle around an origin point
-                Rectangle paperRec = { px, py, paperWidth, paperHeight }; // px, py: top-left corner of the rectangle
-                Vector2 paperOrigin = { 0.0f, paperHeight / 2.0f }; // Hinge it at the player's center
+                Rectangle paperSource = { 0.0f, 0.0f, (float)paperTex.width, (float)paperTex.height };
+                Rectangle paperDest = { px, py, paperWidth, paperHeight };
+
+                // Origin is the "handle" of the newspaper. We set X to -10 to offset it slightly from the body center
+                Vector2 paperOrigin = { -10.0f, paperHeight / 2.0f }; // Hinge it at the player's center
                 // Vector2 holds an x and a y value which specify the horizontal and vertical pivot
 
-                Color paperColor = gameState.players[i].is_attacking ? ORANGE : DARKGRAY;
-                DrawRectanglePro(paperRec, paperOrigin, rotDegrees, paperColor);
+                Color actionTint = WHITE;
+                DrawTexturePro(paperTex, paperSource, paperDest, paperOrigin, rotDegrees, actionTint);
 
                 // Draw Score
                 DrawText(TextFormat("Score: %d", gameState.players[i].score), px - 20, py - 40, 10, DARKGRAY);
             }
         }
 
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (gameState.players[i].score >= 100) {
+                // Draw an overlay
+                DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.8f));
+                const char* winText = TextFormat("PLAYER %d WINS!", i);
+                int textWidth = MeasureText(winText, 40);
+                DrawText(winText, screenWidth/2 - textWidth/2, screenHeight/2 - 20, 40, GOLD);
+                DrawText("Press R to Restart or ESC to Exit", screenWidth/2 - 130, screenHeight/2 + 40, 20, RAYWHITE);
+            }
+        }
+
         DrawFPS(10, 10);
         EndDrawing();
     }
+
+    UnloadTexture(playerTex);
+    UnloadTexture(paperTex);
+    UnloadTexture(opponentTex);
 
     // Cleanup
     close(sock);

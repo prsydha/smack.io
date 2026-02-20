@@ -10,7 +10,8 @@
 enum PacketType : uint8_t {
     JOIN = 0,
     INPUT = 1,
-    STATE_UPDATE = 2
+    STATE_UPDATE = 2,
+    RESTART_REQ = 3
 };
 
 // Ensure no memory padding ruins our binary data

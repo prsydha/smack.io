@@ -101,8 +101,8 @@ int main(){
 
                     // 2. Initialize player state
                     game_state.players[i].active = 1;
-                    game_state.players[i].x = 400.0f; // Default start X
-                    game_state.players[i].y = 300.0f; // Default start Y
+                    game_state.players[i].x = 700.0f; // Default start X
+                    game_state.players[i].y = 450.0f; // Default start Y
                     game_state.players[i].rotation = 0.0f;
                     game_state.players[i].score = 0;
                     game_state.players[i].is_attacking = 0;
@@ -138,16 +138,35 @@ int main(){
                 } else if (valread < sizeof(InputPacket)) {
                     // This is a "Partial Read" - Ignore it for now to prevent crashes
                     std::cout << "Received incomplete packet. Ignoring...\n";
-                } else {
+                } else if (input.type == RESTART_REQ) {
+                    std::cout << "Restart requested by Player " << i << ". Resetting game...\n";
+                    for (int j = 0; j < MAX_PLAYERS; j++) {
+                        game_state.players[j].score = 0;
+                        game_state.players[j].x = 700.0f; // Reset to center
+                        game_state.players[j].y = 450.0f;
+                    }
+                }                
+                else {
                     if (input.type == INPUT) {// Update server logic based on input
                         game_state.players[i].x += input.dx * 5.0f; // Speed multiplier
                         game_state.players[i].y += input.dy * 5.0f;
+
+                        // --- ARENA BOUNDARY CLAMPING ---
+                        const float MAP_WIDTH = 1500.0f;
+                        const float MAP_HEIGHT = 900.0f;
+                        const float MARGIN = 50.0f; // Player radius
+
+                        if (game_state.players[i].x < MARGIN) game_state.players[i].x = MARGIN;
+                        if (game_state.players[i].x > MAP_WIDTH - MARGIN) game_state.players[i].x = MAP_WIDTH - MARGIN;
+                        if (game_state.players[i].y < MARGIN) game_state.players[i].y = MARGIN;
+                        if (game_state.players[i].y > MAP_HEIGHT - MARGIN) game_state.players[i].y = MARGIN;
+
                         game_state.players[i].rotation = input.rotation;
                         game_state.players[i].is_attacking = input.attack;
 
                         // 2. Collision Detection (Only if they are attacking)
                         if (input.attack) {
-                            float attack_range = 40.0f + (game_state.players[i].score * 10.0f);
+                            float attack_range = 50.0f + (game_state.players[i].score * 6.0f);
                             
                             // Calculate where the "newspaper" hits (polar to cartesian)
                             float hit_x = game_state.players[i].x + cos(input.rotation) * attack_range;
@@ -162,7 +181,7 @@ int main(){
                                 float dy = hit_y - game_state.players[j].y;
                                 float distance = sqrt(dx*dx + dy*dy);
 
-                                if (distance < 20.0f) { // 30.0f is the victim's "hitbox" radius
+                                if (distance < 50.0f) { // 30.0f is the victim's "hitbox" radius
                                     // SUCCESSFUL SMACK!
                                     game_state.players[i].score++; 
                                     
