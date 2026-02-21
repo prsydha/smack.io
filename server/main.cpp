@@ -123,7 +123,7 @@ int main(){
             int sd = client_sockets[i];
             if (sd > 0 && FD_ISSET(sd, &readfds)) {
                 InputPacket input;
-                unsigned long int valread = recv(sd, &input, sizeof(InputPacket), 0);
+                ssize_t valread = recv(sd, &input, sizeof(InputPacket), 0);
 
                 if (valread <= 0) {
                     // 0 means orderly shutdown, -1 means error

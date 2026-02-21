@@ -101,11 +101,15 @@ int main(int argc, char* argv[]) {
         if (IsKeyPressed(KEY_R)) {
             // Check if anyone has won (score >= 10)
             bool gameEnded = false;
-            for(int i=0; i<MAX_PLAYERS; i++) if(gameState.players[i].score >= 10) gameEnded = true;
+            for(int i=0; i<MAX_PLAYERS; i++) if(gameState.players[i].score >= 100) gameEnded = true;
 
             if (gameEnded) {
-                uint8_t restartType = RESTART_REQ;
-                send(sock, &restartType, sizeof(uint8_t), 0);
+                // Send a FULL InputPacket, not just a uint8_t
+                InputPacket restartPacket = {};
+                restartPacket.type = RESTART_REQ;
+                restartPacket.id = my_id;
+                
+                send(sock, &restartPacket, sizeof(InputPacket), 0);
             }
         }
 
